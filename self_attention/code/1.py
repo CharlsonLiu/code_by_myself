@@ -35,3 +35,5 @@ attention_output = torch.matmul(attention_weights, V)
 
 # 输出的 attention_output 形状为 (batch_size, seq_len, d_v)
 print(attention_output.shape)
+
+print(torch.ones(size=(10,8,16)).view(10,-1,4).shape)
