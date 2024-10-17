@@ -23,7 +23,11 @@ class MultiHeadAttention(nn.Module):
         self.h = head_num        # 注意力头的数量
 
         # 每一头注意力的输出维度，d_k=d_v=d_model/h
-        self.d = d_model // head_num
+        if d_model % head_num != 0 :
+            raise ValueError('The values of d_model and head_num do not match. \
+                             Please re-enter the values and make sure that d_model / head_num is an integer.')
+        else:
+            self.d = d_model // head_num
 
         # 定义线性变换层，生成Q、K、V的权重矩阵
         self.W_Q = nn.Linear(d_model, d_model)
@@ -110,11 +114,12 @@ class MultiHeadAttention(nn.Module):
         plt.ylabel('Queries')
         plt.show()
 
-# 示例用法
-model = MultiHeadAttention(d_model=512, head_num=8, dropout_rate=0.1)
-input_tensor = torch.randn(32, 20, 512)  # (batch_size, seq_len, d_model)
-output, attention_weights = model(input_tensor)
+if __name__=='__main__':
+    # 示例用法
+    model = MultiHeadAttention(d_model=512, head_num=8, dropout_rate=0.1)
+    input_tensor = torch.randn(32, 20, 512)  # (batch_size, seq_len, d_model)
+    output, attention_weights = model(input_tensor)
 
-# 可视化第一个头的注意力权重
-seq_names = [f'Token {i}' for i in range(20)]  # 序列中的token名称
-model.visualize_attention(attention_weights, head_index=0, seq_names=seq_names)
+    # 可视化第一个头的注意力权重
+    seq_names = [f'Token {i}' for i in range(20)]  # 序列中的token名称
+    model.visualize_attention(attention_weights, head_index=0, seq_names=seq_names)

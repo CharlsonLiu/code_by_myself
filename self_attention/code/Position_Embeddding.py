@@ -6,6 +6,7 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 
+
 class TokenEmbedding(nn.Embedding):
     def __init__(self, vocab_size: int, d_model: int) -> None:
         """
@@ -62,11 +63,11 @@ class PositionalEmbedding(nn.Module):
         return self.encoding[:x.size(1),:]
     
 class TransformerEmbedding(nn.Module):
-    def __init__(self,vocab_size:int,d_model:int,device,max_len:int,dropout_porb:float):
+    def __init__(self,vocab_size:int,d_model:int,device,max_len:int,dropout_rate:float):
         super(TransformerEmbedding,self).__init__()
         self.token_emb = TokenEmbedding(vocab_size,d_model)
         self.pos_emb = PositionalEmbedding(max_len,d_model,device)
-        self.dropout = nn.Dropout(p = dropout_porb)
+        self.dropout = nn.Dropout(p = dropout_rate)
     
     def forward(self,x:torch.Tensor):
         # x:[batch_size,token_length]
@@ -95,7 +96,7 @@ if __name__ == "__main__":
     vocab_size = 10000  # 词汇表大小
     d_model = 512       # 嵌入维度
     max_len = 50       # 位置编码最大长度
-    dropout_prob = 0.1  # Dropout 概率
+    dropout_rate = 0.1  # Dropout 概率
     device = 'cuda' if torch.cuda.is_available() else 'cpu'      # 设备选择，CPU 或 GPU
 
     # 创建 PositionalEmbedding 实例
