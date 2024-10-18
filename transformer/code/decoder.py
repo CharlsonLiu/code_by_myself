@@ -40,6 +40,7 @@ class DecoderLayer(nn.Module):
         x = self.norm1(self.dropout1(x) + _x)
         _x = x
 
+        # 编码器处理后的结果作为k、v矩阵，目标的作为q矩阵
         x = self.crossAtten(x,encoder,encoder,s_mask)
         x = self.norm2(self.dropout2(x) + _x)
         _x = x
@@ -57,15 +58,15 @@ class Decoder(nn.Module):
         self.layers = nn.ModuleList(
             [
                 DecoderLayer(d_model=d_model,head_num=n_head,hidden_dim=hidden_dim,dropout_rate=dropout_rate)
-
+                for _ in range(layer_num)
             ]
         )
         self.linear = nn.Linear(d_model,dec_voc_size)
 
-    def forward(self,decoder,encoder,t_mask,s_mask):
-        decoder = self.embedding(encoder)
+    def forward(self,trg,encoder,t_mask,s_mask):
+        decoder = self.embedding(trg)
         for layer in self.layers:
             decoder = layer(decoder,encoder,t_mask,s_mask)
         decoder = self.linear(decoder)
-        decoder = F.softmax(decoder,dim=-1)
+        # decoder = F.softmax(decoder,dim=-1)  # 如果使用 CrossEntropyLoss，这里不需要 softmax
         return decoder

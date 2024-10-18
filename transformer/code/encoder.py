@@ -89,7 +89,7 @@ class EncoderLayer(nn.Module):
 
         
 class Encoder(nn.Module):
-    def __init__(self,d_model: int, hidden_dim: int, head_num: int, dropout_rate: float,layer_num:int,\
+    def __init__(self,d_model: int, hidden_dim: int, head_num: int, dropout_rate: float,layer_num:int,
                  vocab_size:int,max_len:int,device) -> None:
         """
         初始化Encoder类，该类构成了Transformer模型的编码器部分。
@@ -107,7 +107,7 @@ class Encoder(nn.Module):
         super().__init__()
 
         # Transformer embedding层，负责将输入的词汇转换为向量表示，同时添加位置编码
-        self.embedding = TransformerEmbedding(max_len=max_len,d_model=d_model,device=device,\
+        self.embedding = TransformerEmbedding(max_len=max_len,d_model=d_model,device=device,
                                               vocab_size=vocab_size,dropout_rate=dropout_rate)
 
         # 使用 nn.Sequential 创建多层的编码器层,会报错，只支持传递单一参数

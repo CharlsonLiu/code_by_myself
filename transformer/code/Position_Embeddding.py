@@ -22,7 +22,8 @@ class TokenEmbedding(nn.Embedding):
         - None: 此构造函数不返回任何值，但会初始化一个嵌入矩阵，形状为 (vocab_size, d_model)。
 
         注意:
-        - padding_idx=1 表示索引为1的位置被视为填充位置，其嵌入值为零向量，且在梯度更新中不参与计算。这对于处理变长序列非常有用，以避免填充位置影响模型训练。
+        - padding_idx=1 表示索引为1的位置被视为填充位置，其嵌入值为零向量，且在梯度更新中不参与计算。
+            这对于处理变长序列非常有用，以避免填充位置影响模型训练。
         """
         # 调用父类 nn.Embedding 的构造函数，初始化嵌入矩阵
         super(TokenEmbedding, self).__init__(vocab_size, d_model, padding_idx=1)
