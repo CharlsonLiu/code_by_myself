@@ -77,7 +77,7 @@ class EncoderLayer(nn.Module):
 
     def forward(self,x:torch.Tensor,mask=None) -> torch.Tensor:
         _x = x
-        x, _ = self.Attention(x, mask)  # 只接收注意力输出
+        x, _ = self.Attention(x,x,x,mask)  # 只接收注意力输出
         x = self.dropout1(x)
         x = self.LayerNorm1(x + _x)
 
@@ -122,7 +122,7 @@ class Encoder(nn.Module):
              for _ in range(layer_num)]
         )
 
-    def forward(self,x:torch.Tensor,mask=None)-> torch.Tensor:
+    def forward(self,x:torch.Tensor,s_mask=None)-> torch.Tensor:
         """
         前向传播函数。
         
@@ -137,10 +137,9 @@ class Encoder(nn.Module):
         x = self.embedding(x)
         # 手动遍历每一层的编码器层，并将 x 和 mask 作为参数传递给每一层
         for layer in self.layers:
-            x = layer(x, mask)
+            x = layer(x, s_mask)
         return x
     
-import torch
 
 # 测试用例
 def test_encoder():

@@ -71,7 +71,7 @@ class MultiHeadAttention(nn.Module):
 
         return output, scores # 返回输出和注意力权重
 
-    def forward(self, x: torch.Tensor, mask=None) -> torch.Tensor:
+    def forward(self, q: torch.Tensor, k: torch.Tensor,v: torch.Tensor,mask=None) -> torch.Tensor:
         """
         前向传播
 
@@ -82,12 +82,12 @@ class MultiHeadAttention(nn.Module):
         return:
         output: torch.Tensor, 经过注意力机制处理后的输出
         """
-        batch_size = x.size(0)  # 获取批量大小
+        batch_size = q.size(0)  # 获取批量大小
 
         # 通过线性变换生成Q、K、V，并调整形状以便多头注意力计算
-        q = self.W_Q(x).view(batch_size, -1, self.h, self.d).transpose(1, 2)  # (batch_size, seq_len,d)->(batch_size,seq_len,head,d)->(batch_size, head_num, seq_len, d)
-        k = self.W_K(x).view(batch_size, -1, self.h, self.d).transpose(1, 2)  # (batch_size, seq_len,d)->(batch_size,seq_len,head,d)->(batch_size, head_num, seq_len, d)
-        v = self.W_V(x).view(batch_size, -1, self.h, self.d).transpose(1, 2)  # (batch_size, seq_len,d)->(batch_size,seq_len,head,d)->(batch_size, head_num, seq_len, d)
+        q = self.W_Q(q).view(batch_size, -1, self.h, self.d).transpose(1, 2)  # (batch_size, seq_len,d)->(batch_size,seq_len,head,d)->(batch_size, head_num, seq_len, d)
+        k = self.W_K(k).view(batch_size, -1, self.h, self.d).transpose(1, 2)  # (batch_size, seq_len,d)->(batch_size,seq_len,head,d)->(batch_size, head_num, seq_len, d)
+        v = self.W_V(v).view(batch_size, -1, self.h, self.d).transpose(1, 2)  # (batch_size, seq_len,d)->(batch_size,seq_len,head,d)->(batch_size, head_num, seq_len, d)
 
         # 计算注意力输出
         scores, attention_weights = self.attention(q, k, v, mask)
