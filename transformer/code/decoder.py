@@ -67,4 +67,5 @@ class Decoder(nn.Module):
         for layer in self.layers:
             decoder = layer(decoder,encoder,t_mask,s_mask)
         decoder = self.linear(decoder)
+        decoder = F.softmax(decoder,dim=-1)
         return decoder
