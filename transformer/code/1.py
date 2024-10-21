@@ -1,12 +1,6 @@
-from typing import List
-
-
-class Solution:
-    def minimumAverage(self, nums: List[int]) -> float:
-        nums.sort()
-        l = len(nums)
-        avg = []
-        for i in range(len(nums) // 2):
-            avg.append((nums[i]+nums[l-1]) / 2)
-            print('min',nums[i])
-        return min(avg)
+n = int(input())
+day = 0
+while n>4:
+    n = n-(n//2+2)
+    day+=1
+print(day+1)
