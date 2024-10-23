@@ -80,6 +80,7 @@ def main():
 
     print('训练集Accuracy: ', score_train)
     print('测试集Accuracy: ', score_test)
+    
     # 可视化决策边界
     x1_min, x1_max = X[:, 0].min() - 0.5, X[:, 0].max() + 0.5
     x2_min, x2_max = X[:, 1].min() - 0.5, X[:, 1].max() + 0.5
