@@ -80,6 +80,7 @@ class NCFModel(nn.Module):
         # GMF部分
         gmf_user_embed = self.gmf_user_embedding(user_id)  # 获取用户嵌入
         gmf_item_embed = self.gmf_item_embedding(item_id)  # 获取电影嵌入
+        # GMF使用逐元素点乘得到特征表示，也就是通过线性方法学习特征
         gmf_output = gmf_user_embed * gmf_item_embed  # 计算GMF输出
 
         # MLP部分
@@ -140,7 +141,7 @@ def train(model, device, train_loader, val_loader, loss_fn, optimizer, epochs=10
         val_losses.append(val_loss)  # 记录验证损失
 
         # 输出训练和验证损失
-        print(f'Epoch {epoch + 1}, Train Loss: {avg_train_loss}, Validation Loss: {val_loss}')
+        print(f'\nEpoch {epoch + 1}, Train Loss: {avg_train_loss}, Validation Loss: {val_loss}')
 
     return train_losses, val_losses  # 返回训练和验证损失列表
 
@@ -173,7 +174,7 @@ def validate(model, val_loader, loss_fn, device):
             val_loss += loss.item()  # 累加损失
 
     avg_val_loss = val_loss / len(val_loader)  # 计算平均验证损失
-    print(f'Validation Loss: {avg_val_loss}')  # 输出验证损失
+    print(f'\nValidation Loss: {avg_val_loss}')  # 输出验证损失
     return avg_val_loss  # 返回验证损失
 
 
