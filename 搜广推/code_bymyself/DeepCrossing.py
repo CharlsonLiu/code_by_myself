@@ -42,7 +42,7 @@ class DeepCrossing(nn.Module):
         super(DeepCrossing, self).__init__()
         self.sparse_features = dnn_feature_columns['sparse']
 
-        # 为稀疏变量构建嵌入层
+        # 为每一个稀疏特征构建嵌入层
         self.embeddings = nn.ModuleList([
             Embedding(feat['vocabulary_size'], feat['embedding_dim']) for feat in self.sparse_features
         ])
@@ -52,7 +52,8 @@ class DeepCrossing(nn.Module):
         self.dnn_output = nn.Linear(117,1)
     
     def forward(self,dense_inputs, sparse_inputs):
-        # 处理稀疏特征
+        # 处理稀疏特征，得到系数特征的embedding。
+        #nn.li 取出对应稀疏特征的序号，然后去除所有该特征下的用户，得到embedding
         sparse_embeddings = [emb(sparse_inputs[:,i]) for i ,emb in enumerate(self.embeddings)]
         sparse_output = torch.cat(sparse_embeddings,dim=1)
 
@@ -80,8 +81,9 @@ def data_process(data_df:pd.DataFrame,dense_feat:List,sparse_feat:List):
 
     data_df[sparse_feat] = data_df[sparse_feat].fillna('-1')
     for f in sparse_feat:
+        # 对稀疏特征中的每个特征做onehot编码
         lbe = LabelEncoder()
-        data_df[f] = lbe.fit_transform(data_df[f])  # 使用one-hot编码
+        data_df[f] = lbe.fit_transform(data_df[f])  
 
     return data_df[dense_feat + sparse_feat] 
 
@@ -136,26 +138,30 @@ def main():
     data = pd.read_csv(path, sep=',')
     
     columns = data.columns.values
+    # 拆分稠密和稀疏特征
     dense_features = [feat for feat in columns if 'I' in feat]
     sparse_features = [feat for feat in columns if 'C' in feat]
 
+    # 拆分训练数据与标签
     train_data = data_process(data, dense_feat=dense_features, sparse_feat=sparse_features)
     labels = data['label'].values
 
     # 构建特征标记
+    # 将稀疏与稠密矩阵分别保存成字典形式，方便后面生成embedding矩阵
+    # 这是要学习的点，这样查找起来很容易
     dnn_feature_columns = {
         'sparse': [{'name': feat, 'vocabulary_size': data[feat].nunique(), 'embedding_dim': 4} for feat in sparse_features],
         'dense': [{'name': feat, 'dimension': 1} for feat in dense_features]
     }
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    epochs = 100
-    batch_size = 64
+    epochs = 10
+    batch_size = 32
 
     # 模型初始化
     model = DeepCrossing(dnn_feature_columns).to(device)
     criterion = nn.BCELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
     # 准备数据
     dense_input_tensor = torch.tensor(train_data[dense_features].values, dtype=torch.float32)
@@ -185,7 +191,7 @@ def main():
         val_losses.append(val_loss)
 
         # 每10轮输出一次损失
-        if (epoch + 1) % 10 == 0:
+        if (epoch + 1) % 2 == 0:
             print(f'Epoch {epoch + 1}, Training Loss: {avg_loss:.4f}, Validation Loss: {val_loss:.4f}')
 
     # 可视化损失
