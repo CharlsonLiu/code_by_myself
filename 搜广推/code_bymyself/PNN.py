@@ -82,7 +82,6 @@ class PNN(nn.Module):
     def __init__(self, dnn_feature_columns,in_features,embed_dim,out_features):
         super(PNN, self).__init__()
         self.sparse_feat = dnn_feature_columns['sparse']
-
         # 为每一个稀疏特征构建嵌入层
         self.embeddings = nn.ModuleList([
             Embedding(feat['vocabulary_size'], feat['embedding_dim']) for feat in self.sparse_feat
@@ -103,6 +102,7 @@ class PNN(nn.Module):
         # 取出对应稀疏特征的序号，然后去除所有该特征下的用户，得到embedding
         sparse_embeddings = [emb(inputs[:,i]) for i ,emb in enumerate(self.embeddings)]
         sparse_output = torch.cat(sparse_embeddings,dim=1)
+        print(sparse_output.shape)
 
         prodcut_output = self.prodcutLayer(sparse_output)
         dnn_out = self.linear_blocks(prodcut_output)
@@ -157,7 +157,7 @@ def main():
     path = '搜广推\\fun-rec\\codes\\base_models\\data\\criteo_sample.txt'
     data = pd.read_csv(path, sep=',')
     
-    #    Split dense and sparse features
+    # Split dense and sparse features
     columns = data.columns.values
     dense_features = [feat for feat in columns if 'I' in feat]
     sparse_features = [feat for feat in columns if 'C' in feat]
