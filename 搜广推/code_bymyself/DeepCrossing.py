@@ -53,12 +53,16 @@ class DeepCrossing(nn.Module):
     
     def forward(self,dense_inputs, sparse_inputs):
         # 处理稀疏特征，得到系数特征的embedding。
-        #nn.li 取出对应稀疏特征的序号，然后去除所有该特征下的用户，得到embedding
-        sparse_embeddings = [emb(sparse_inputs[:,i]) for i ,emb in enumerate(self.embeddings)]
-        sparse_output = torch.cat(sparse_embeddings,dim=1)
+        # 打印每个稀疏特征的嵌入向量
+        sparse_embeddings = [emb(sparse_inputs[:, i]) for i, emb in enumerate(self.embeddings)]
 
-        # 拼接特征
+        # 拼接稀疏特征
+        sparse_output = torch.cat(sparse_embeddings, dim=1)
+        print("Sparse output shape:", sparse_output.shape)
+
+        # 拼接稠密和稀疏特征
         dnn_inputs = torch.cat([dense_inputs, sparse_output], dim=1)
+        print("DNN inputs shape:", dnn_inputs.shape)
 
         for block in self.residual_blocks:
             dnn_inputs = block(dnn_inputs)
@@ -95,6 +99,9 @@ def train_epoch(model, train_loader, criterion, optimizer, device):
         dense_batch = dense_batch.to(device)
         sparse_batch = sparse_batch.to(device)
         labels_batch = labels_batch.to(device)
+        print("Dense batch shape:", dense_batch.shape)
+        print("Sparse batch shape:", sparse_batch.shape)
+        print("Labels batch shape:", labels_batch.shape)
 
         optimizer.zero_grad()
         outputs = model(dense_batch, sparse_batch)
@@ -144,6 +151,7 @@ def main():
 
     # 拆分训练数据与标签
     train_data = data_process(data, dense_feat=dense_features, sparse_feat=sparse_features)
+    print('dataframe:',train_data.shape)
     labels = data['label'].values
 
     # 构建特征标记

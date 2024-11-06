@@ -20,6 +20,8 @@ import torch.nn as nn
 from torch.nn import Embedding
 import torch.functional as F
 from torch.utils.data import DataLoader, Dataset, random_split,TensorDataset
+import torch.nn.init as init
+import torch.optim as optim
 
 from sklearn.preprocessing import LabelEncoder
 import matplotlib.pyplot as plt
@@ -35,9 +37,13 @@ def process_data(data_df,dense_feature,sparse_feature):
         data_df[f] = lbe.fit_transform(data_df[f])
     return data_df[dense_feature + sparse_feature]
 
+import torch.nn.init as init
+
 class WideAndDeep(nn.Module):
-    def __init__(self,Linearfeature,DNNFeature,dense_dim,sparse_dim,out_dim):
+    def __init__(self, Linearfeature, DNNFeature, dense_dim,
+                    sparse_dim, embed_dim):
         super(WideAndDeep, self).__init__()
+
         # 线性层部分
         self.linear_sparse_feat = Linearfeature['sparse']
 
@@ -46,52 +52,69 @@ class WideAndDeep(nn.Module):
         ])
 
         # 构建线性部分的稠密logit计算模块
-        self.linear_Dlogit = nn.Linear(dense_dim,1)
+        self.linear_Dlogit = nn.Linear(dense_dim, 1)
 
         # DNN部分
         self.dnn_sparse_feature = DNNFeature['sparse']
 
         self.dnn_embeddings = nn.ModuleList([
-            Embedding(feat['vocab_size'],feat['embed_dim']) for feat in self.dnn_sparse_feature 
+            Embedding(feat['vocab_size'], feat['embed_dim']) for feat in self.dnn_sparse_feature
         ])
+        
         self.dnn_layers = nn.Sequential(
-            nn.Linear(x,y),
+            nn.Linear(dense_dim + sparse_dim * embed_dim, 128),
             nn.ReLU(),
-            nn.Dropout(p = 0.5),
-            nn.Linear(y,z),
+            nn.Dropout(p=0.5),  # Dropout的比例增加
+            nn.LayerNorm(128),
+            nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Dropout(p = 0.3),
-            nn.Linear(z,d),
+            nn.Dropout(p=0.3),  # 增加Dropout
+            nn.LayerNorm(64),
+            nn.Linear(64, 1),
             nn.ReLU(),
-            nn.Dropout(p = 0.1),
-            nn.Linear(d,1)
         )
 
-    def forward(self,linear_dense_data,linear_sparse_data,dnn_dense_data,dnn_sparse_data):
+        # 添加权重初始化
+        self.init_weights()
+
+    def forward(self, linear_dense_data, linear_sparse_data, dnn_dense_data, dnn_sparse_data):
         # 线性层
-        # 构建embedding
-        linear_sparse = torch.cat([emb(linear_sparse_data[:,i]) for i ,emb in enumerate(self.linear_embeddings)],dim = 1)
-        linear_sparse_logits = linear_sparse.sum(dim = 1)
-        linear_dense_logits = self.linear_Dlogit(torch.cat(linear_dense_data,dim=1))
-        linear_logit = torch.sum(linear_dense_logits,linear_sparse_logits)
-        
+        linear_sparse = torch.stack([emb(linear_sparse_data[:, i]) for i, emb in enumerate(self.linear_embeddings)], dim=1)
+        linear_sparse_logits = linear_sparse.sum(dim=1)
+        linear_dense_logits = self.linear_Dlogit(linear_dense_data)
+        linear_logit = linear_dense_logits + linear_sparse_logits
+
         # DNN层
-        dnn_sparse = torch.cat([emb(dnn_sparse_data[:,i]) for i, emb in enumerate(self.dnn_embeddings)],dim=1)
-        dnn_input = torch.cat([dnn_dense_data,dnn_sparse],dim = 1)
+        dnn_sparse = torch.cat([emb(dnn_sparse_data[:, i]) for i, emb in enumerate(self.dnn_embeddings)], dim=1)
+        dnn_input = torch.cat([dnn_dense_data, dnn_sparse], dim=1)
         dnn_logit = self.dnn_layers(dnn_input)
 
         output_logit = linear_logit + dnn_logit
 
-        return nn.Sigmoid(output_logit)
+        return output_logit
 
+    def init_weights(self):
+        # 对Embedding层进行初始化
+        for emb in self.linear_embeddings:
+            init.xavier_uniform_(emb.weight)  # Xavier初始化
+        for emb in self.dnn_embeddings:
+            init.xavier_uniform_(emb.weight)
 
+        # 对线性层进行初始化
+        for layer in self.dnn_layers:
+            if isinstance(layer, nn.Linear):
+                init.xavier_uniform_(layer.weight)  # Xavier初始化
+                init.zeros_(layer.bias)  # 偏置初始化为0
+
+        # 对线性层的logit计算部分进行初始化
+        init.xavier_uniform_(self.linear_Dlogit.weight)  # Xavier初始化
+        init.zeros_(self.linear_Dlogit.bias)  # 偏置初始化为0
 
 def train_epoch(model, train_loader, criterion, optimizer, device):
     model.train()
     total_loss = 0
 
-    for linear_dense_batch, linear_sparse_batch,\
-        dnn_dense_batch, dnn_sparse_batch, labels_batch in train_loader:
+    for linear_dense_batch, linear_sparse_batch,dnn_dense_batch, dnn_sparse_batch, labels_batch in train_loader:
         linear_dense_batch = linear_dense_batch.to(device)
         linear_sparse_batch = linear_sparse_batch.to(device)
         dnn_dense_batch = dnn_dense_batch.to(device)
@@ -114,8 +137,7 @@ def validate_epoch(model, val_loader, criterion, device):
     model.eval()
     total_val_loss = 0
     with torch.no_grad():
-        for linear_dense_batch, linear_sparse_batch,\
-            dnn_dense_batch, dnn_sparse_batch, labels_batch in val_loader:
+        for linear_dense_batch, linear_sparse_batch,dnn_dense_batch, dnn_sparse_batch, labels_batch in val_loader:
             linear_dense_batch = linear_dense_batch.to(device)
             linear_sparse_batch = linear_sparse_batch.to(device)
             dnn_dense_batch = dnn_dense_batch.to(device)
@@ -153,24 +175,29 @@ def main():
     labels = data['label'].values
 
     # 准备输入字典
+    dense_dim = 13
+    sparse_dim = 26
     embed_dim = 4
-    out_dim = 16
-    batch_size = 32
+    batch_size = 16
     epochs = 20
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # 分别构建线性特征和dnn的特征
     linear_feature = {
-        'sparse':[{'name':feat,'vocab_size':data[feat].nunique,'embed_dim':1} for feat in sparse_features],
+        'sparse':[{'name':feat,'vocab_size':data[feat].nunique(),'embed_dim':1} for feat in sparse_features],
         'dense': [{'name': feat, 'dimension': 1} for feat in dense_features]
     }
 
     dnn_feature = {
-        'sparse':[{'name':feat,'vocab_size':data[feat].nunique,'embed_dim':embed_dim} for feat in sparse_features],
+        'sparse':[{'name':feat,'vocab_size':data[feat].nunique(),'embed_dim':embed_dim} for feat in sparse_features],
         'dense': [{'name': feat, 'dimension': 1} for feat in dense_features]
     }
-    model = WideAndDeep(linear_feature,dnn_feature,dense_dim,sparse_dim,out_dim)
-    criterion = nn.BCELoss()
-    optimizer = torch.optim.Adam(params=model.parameters(), lr = 1e-3)
+    model = WideAndDeep(linear_feature,dnn_feature,dense_dim,sparse_dim,embed_dim).to(device)
+    criterion = nn.BCEWithLogitsLoss()
+    # 使用 AdamW 优化器，并添加学习率调度器
+    optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-5)  # weight_decay是L2正则化项
+
+    # 使用学习率调度器
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5, verbose=True)
     
     # 准备数据
     linear_dense_input = torch.tensor(train_data[dense_features].values, dtype=torch.float32)
@@ -184,7 +211,7 @@ def main():
                             dnn_dense_input,dnn_sparse_input,labels_tensor)
 
     # 划分训练集和验证集
-    train_size = int(0.8 * len(dataset))
+    train_size = int(0.6 * len(dataset))
     val_size = len(dataset) - train_size
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -201,6 +228,9 @@ def main():
         # 验证
         val_loss = validate_epoch(model, val_loader, criterion, device)
         val_losses.append(val_loss)
+
+        # 调用学习率调度器
+        scheduler.step(val_loss)
 
         # 每10轮输出一次损失
         if (epoch + 1) % 2 == 0:
