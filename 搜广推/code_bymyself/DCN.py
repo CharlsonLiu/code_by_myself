@@ -1,18 +1,18 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-#!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 '''
-@文件        :DeepFM.py
+@文件        :DCN.py
 @说明        :
-@时间        :2024/11/07 19:37:49
+@时间        :2024/11/12 18:03:40
 @作者        :Liu Ziyue
 '''
+
 
 from typing import List
 import warnings
 
 warnings.filterwarnings("ignore")
+from IPython import embed
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -41,39 +41,35 @@ def process_data(data_df,dense_feature,sparse_feature):
     return data_df[dense_feature + sparse_feature]
 
 
-class FMlayer(nn.Module):
-    def __init__(self):
-        super(FMlayer, self).__init__()
+class CrossLayer(nn.Module):
+    def __init__(self,embed_dim,layer_nums = 3):
+        super(CrossLayer, self).__init__()
+        self.layer_nums = 3
+        self.embed_dim = embed_dim
+        self.W  = nn.ParameterList([nn.Parameter(torch.randn(self.embed_dim,1)) for _ in range(self.layer_nums)])
+        self.b = nn.ParameterList([nn.Parameter(torch.zeros(self.embed_dim,1)) for _ in range(self.layer_nums)])
+
 
     def forward(self,input):
-        # 优化后的公式为： 0.5 * 求和（和的平方-平方的和）  =>> B x 1
-        # input shape[batch,feature num,embed dimension]
-        square_of_sum = torch.square(torch.sum(input,dim=1,keepdim=True))
-        sum_of_square = torch.sum(input * input, dim=1, keepdim=True)
-        cross_term = square_of_sum - sum_of_square
-        cross_term = 0.5 * torch.sum(cross_term,dim=2,keepdim=False)
+        # input_shape[batch,features*embed_dim]->[batch,features*embed_dim]
+        x_0 = input.unsqueeze(2)
+        x_l = input
+        for i in range(self.layer_nums):
+            _x_l = x_l.unsqueeze(2).transpose(1,2)
+            x_0l = torch.einsum('bik,bkj->bij',x_0,_x_l)
+            w,b = self.W[i].unsqueeze(0), self.b[i].unsqueeze(0).squeeze(2)
+            cross = torch.einsum('bij,bjk->bik',x_0l,w).squeeze(2)
+            x_l = cross + b + x_l
+        
+        return x_l
 
-        return cross_term
 
 class DeepFM(nn.Module):
-    def __init__(self, Linearfeature, DNNFeature, dense_dim,
-                    sparse_dim, embed_dim):
+    def __init__(self,DNNFeature, dense_dim, sparse_dim, embed_dim):
         super(DeepFM, self).__init__()
 
-        # 线性层部分，这里和wide and deep是一样的
-        # 稠密和稀疏特征分开处理，得到各自的logit，
-        # 相加就是线性部分的logit
-        self.linear_sparse_feat = Linearfeature['sparse']
-
-        self.linear_embeddings = nn.ModuleList([
-            Embedding(feat['vocab_size'], feat['embed_dim']) for feat in self.linear_sparse_feat
-        ])
-
-        # 构建线性部分的稠密logit计算模块
-        self.linear_Dlogit = nn.Linear(dense_dim, 1)
-
-        # FM部分,唯一不同的部分
-        self.fm = FMlayer()
+        # 交叉层部分
+        self.cross = CrossLayer(dense_dim + sparse_dim * embed_dim,3)
 
         # DNN部分
         self.dnn_sparse_feature = DNNFeature['sparse']
@@ -83,44 +79,51 @@ class DeepFM(nn.Module):
         ])
         
         self.dnn_layers = nn.Sequential(
-            nn.Linear(dense_dim + sparse_dim * embed_dim, 128),
+            nn.Linear(dense_dim + sparse_dim * embed_dim, 256),  # 第一层神经元数量设为256
             nn.ReLU(),
-            nn.LayerNorm(128),
-            nn.Linear(128, 64),
+            nn.LayerNorm(256),  # 使用LayerNorm替代BatchNorm
+            nn.Dropout(0.5),  # 添加Dropout来减少过拟合
+
+            nn.Linear(256, 128),  # 中间层，使用128个神经元
             nn.ReLU(),
-            nn.LayerNorm(64),
-            nn.Linear(64, 1),
+            nn.LayerNorm(128),  # 使用LayerNorm
+            nn.Dropout(0.3),  # 添加Dropout
+
+            nn.Linear(128, 64),  # 减少神经元数量至64
             nn.ReLU(),
+            nn.LayerNorm(64),  # 使用LayerNorm
+            nn.Dropout(0.3),  # 添加Dropout
+
+            nn.Linear(64, 32),  # 进一步减少神经元数量至32
+            nn.ReLU(),
+            nn.LayerNorm(32),  # 使用LayerNorm
+            nn.Dropout(0.1),  # 添加Dropout
         )
+
+        self.norm = nn.LayerNorm(dense_dim + sparse_dim * embed_dim + 32)
+        self.out = nn.Linear(dense_dim + sparse_dim * embed_dim + 32 , 1)
 
         # 添加权重初始化
         self.init_weights()
 
-    def forward(self, linear_dense_data, linear_sparse_data, dnn_dense_data, dnn_sparse_data):
-        # 线性层
-        linear_sparse = torch.stack([emb(linear_sparse_data[:, i]) for i, emb in enumerate(self.linear_embeddings)], dim=1)
-        linear_sparse_logits = linear_sparse.sum(dim=1)
-        linear_dense_logits = self.linear_Dlogit(linear_dense_data)
-        linear_logit = linear_dense_logits + linear_sparse_logits
+    def forward(self,dnn_dense_data, dnn_sparse_data):
+        # 构建所需要的数据
+        sparse = torch.cat([emb(dnn_sparse_data[:, i]) for i, emb in enumerate(self.dnn_embeddings)], dim=1)
+        input = torch.cat([dnn_dense_data, sparse], dim=1)
+
+        # 特征交叉组合层
+        cross = self.cross(input)
         
-        # FM部分，单独处理sparse部分，
-        # 因此可以借用DNN部分的embedding
-        fm_input = torch.stack([emb(dnn_sparse_data[:, i]) for i, emb in enumerate(self.dnn_embeddings)], dim=1)
-        fm_cross_out = self.fm(fm_input)
-
         # DNN层
-        dnn_sparse = torch.cat([emb(dnn_sparse_data[:, i]) for i, emb in enumerate(self.dnn_embeddings)], dim=1)
-        dnn_input = torch.cat([dnn_dense_data, dnn_sparse], dim=1)
-        dnn_logit = self.dnn_layers(dnn_input)
+        dnn = self.dnn_layers(input)
 
-        output_logit = linear_logit + dnn_logit + fm_cross_out
+
+        output_logit = self.out(self.norm(torch.cat([cross,dnn], dim = 1)))
 
         return output_logit
 
     def init_weights(self):
         # 对Embedding层进行初始化
-        for emb in self.linear_embeddings:
-            init.xavier_uniform_(emb.weight)  # Xavier初始化
         for emb in self.dnn_embeddings:
             init.xavier_uniform_(emb.weight)
 
@@ -130,24 +133,18 @@ class DeepFM(nn.Module):
                 init.xavier_uniform_(layer.weight)  # Xavier初始化
                 init.zeros_(layer.bias)  # 偏置初始化为0
 
-        # 对线性层的logit计算部分进行初始化
-        init.xavier_uniform_(self.linear_Dlogit.weight)  # Xavier初始化
-        init.zeros_(self.linear_Dlogit.bias)  # 偏置初始化为0
 
 def train_epoch(model, train_loader, criterion, optimizer, device):
     model.train()
     total_loss = 0
 
-    for linear_dense_batch, linear_sparse_batch,dnn_dense_batch, dnn_sparse_batch, labels_batch in train_loader:
-        linear_dense_batch = linear_dense_batch.to(device)
-        linear_sparse_batch = linear_sparse_batch.to(device)
+    for dnn_dense_batch, dnn_sparse_batch, labels_batch in train_loader:
         dnn_dense_batch = dnn_dense_batch.to(device)
         dnn_sparse_batch = dnn_sparse_batch.to(device)
         labels_batch = labels_batch.to(device)
 
         optimizer.zero_grad()
-        outputs = model(linear_dense_batch, linear_sparse_batch,
-                        dnn_dense_batch, dnn_sparse_batch)
+        outputs = model(dnn_dense_batch, dnn_sparse_batch)
         loss = criterion(outputs.squeeze(), labels_batch)
         loss.backward()
         optimizer.step()
@@ -161,15 +158,12 @@ def validate_epoch(model, val_loader, criterion, device):
     model.eval()
     total_val_loss = 0
     with torch.no_grad():
-        for linear_dense_batch, linear_sparse_batch,dnn_dense_batch, dnn_sparse_batch, labels_batch in val_loader:
-            linear_dense_batch = linear_dense_batch.to(device)
-            linear_sparse_batch = linear_sparse_batch.to(device)
+        for dnn_dense_batch, dnn_sparse_batch, labels_batch in val_loader:
             dnn_dense_batch = dnn_dense_batch.to(device)
             dnn_sparse_batch = dnn_sparse_batch.to(device)
             labels_batch = labels_batch.to(device)
 
-            outputs = model(linear_dense_batch, linear_sparse_batch,
-                            dnn_dense_batch, dnn_sparse_batch)
+            outputs = model(dnn_dense_batch, dnn_sparse_batch)
             val_loss = criterion(outputs.squeeze(), labels_batch)
             total_val_loss += val_loss.item()
 
@@ -205,34 +199,27 @@ def main():
     batch_size = 16
     epochs = 30
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    # 分别构建线性特征和dnn的特征
-    linear_feature = {
-        'sparse':[{'name':feat,'vocab_size':data[feat].nunique(),'embed_dim':1} for feat in sparse_features],
-        'dense': [{'name': feat, 'dimension': 1} for feat in dense_features]
-    }
+    # 构建特征
 
     dnn_feature = {
         'sparse':[{'name':feat,'vocab_size':data[feat].nunique(),'embed_dim':embed_dim} for feat in sparse_features],
         'dense': [{'name': feat, 'dimension': 1} for feat in dense_features]
     }
-    model = DeepFM(linear_feature,dnn_feature,dense_dim,sparse_dim,embed_dim).to(device)
+    model = DeepFM(dnn_feature,dense_dim,sparse_dim,embed_dim).to(device)
     criterion = nn.BCEWithLogitsLoss()
     # 使用 AdamW 优化器，并添加学习率调度器
-    optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-5)  # weight_decay是L2正则化项
+    optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)  # weight_decay是L2正则化项
 
     # 使用学习率调度器
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5, verbose=True)
     
     # 准备数据
-    linear_dense_input = torch.tensor(train_data[dense_features].values, dtype=torch.float32)
-    linear_sparse_input = torch.tensor(train_data[sparse_features].values, dtype=torch.long)
-    dnn_dense_input = torch.tensor(train_data[dense_features].values, dtype=torch.float32)
-    dnn_sparse_input = torch.tensor(train_data[sparse_features].values, dtype=torch.long)
+    dense_input = torch.tensor(train_data[dense_features].values, dtype=torch.float32)
+    sparse_input = torch.tensor(train_data[sparse_features].values, dtype=torch.long)
     labels_tensor = torch.tensor(labels, dtype=torch.float32)
 
     # 创建数据集和 DataLoader
-    dataset = TensorDataset(linear_dense_input,linear_sparse_input,
-                            dnn_dense_input,dnn_sparse_input,labels_tensor)
+    dataset = TensorDataset(dense_input,sparse_input,labels_tensor)
 
     # 划分训练集和验证集
     train_size = int(0.6 * len(dataset))
