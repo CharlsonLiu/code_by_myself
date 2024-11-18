@@ -238,7 +238,7 @@ $$
 $$
 
 ### CIN网络的细节(重头戏）
-这里尝试剖析下本篇论文的主角CIN网络，全称Compressed Interaction Network。这个东西说白了其实也是一个网络，并不是什么高大上的东西，和Cross Network一样，也是一层一层，每一层都是基于一个固定的公式进行的计算，那个公式长这样:
+这里尝试剖析下本篇论文的主角CIN网络，全称Compressed Interaction Network，和Cross Network一样，也是一层一层，每一层都是基于一个固定的公式进行的计算，那个公式长这样:
 $$
 \mathbf{X}_{h, *}^{k}=\sum_{i=1}^{H_{k-1}} \sum_{j=1}^{m} \mathbf{W}_{i j}^{k, h}\left(\mathbf{X}_{i, *}^{k-1} \circ \mathbf{X}_{j, *}^{0}\right)
 $$
@@ -248,7 +248,7 @@ $$
 <img src="https://img-blog.csdnimg.cn/2021050520530391.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3d1emhvbmdxaWFuZw==,size_1,color_FFFFFF,t_70#pic_center" alt="image-20210308142624189" style="zoom: 60%;" /> 
 </div>
 
- 上面其实就是CIN网络的精髓了，也是它具体的运算过程，只不过直接上图的话，会有些抽象，难以理解，也不符合我整理论文的习惯。下面，我们就一一进行剖析， 先从上面这个公式开始。但在这之前，需要先约定一些符号。要不然不知道代表啥意思。
+ 上面其实就是CIN网络的精髓了，也是它具体的运算过程，只不过直接上图的话，会有些抽象，难以理解。下面，我们就一一进行剖析， 先从上面这个公式开始。但在这之前，需要先约定一些符号。要不然不知道代表啥意思。
 1. $\mathbf{X}^{0} \in \mathbb{R}^{m \times D}$: 这个就是我们的输入，也就是embedding层的输出，可以理解为各个embedding的堆叠而成的矩阵，假设有$m$个特征，embedding的维度是$D$维，那么这样就得到了这样的矩阵， $m$行$D$列。$\mathbf{X}_{i, *}^{0}=\mathbf{e}_{i}$， 这个表示的是第$i$个特征的embedding向量$e_i$。所以上标在这里表示的是网络的层数，输入可以看做第0层，而下标表示的第几行的embedding向量，这个清楚了。
 2. $\mathbf{X}^{k} \in \mathbb{R}^{H_{k} \times D}$: 这个表示的是CIN网络第$k$层的输出，和上面这个一样，也是一个矩阵，每一行是一个embedding向量，每一列代表一个embedding维度。这里的$H_k$表示的是第$k$层特征的数量，也可以理解为神经元个数。那么显然，这个$\mathbf{X}^{k}$就是$H_k$个$D$为向量堆叠而成的矩阵，维度也显然了。$\mathbf{X}_{h, *}^{k}$代表的就是第$k$层第$h$个特征向量了。
 

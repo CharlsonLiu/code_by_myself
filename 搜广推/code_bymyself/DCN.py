@@ -197,7 +197,7 @@ def main():
     sparse_dim = 26
     embed_dim = 4
     batch_size = 16
-    epochs = 30
+    epochs = 60
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # 构建特征
 
@@ -208,7 +208,7 @@ def main():
     model = DeepFM(dnn_feature,dense_dim,sparse_dim,embed_dim).to(device)
     criterion = nn.BCEWithLogitsLoss()
     # 使用 AdamW 优化器，并添加学习率调度器
-    optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)  # weight_decay是L2正则化项
+    optimizer = optim.AdamW(model.parameters(), lr=5e-5, weight_decay=1e-3)  # weight_decay是L2正则化项
 
     # 使用学习率调度器
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5, verbose=True)
@@ -249,6 +249,11 @@ def main():
 
     # 可视化损失
     plot_losses(train_losses, val_losses, epochs)
+    df = pd.read_csv('搜广推\code_bymyself\losses\wideNdeep_val_losses.csv')
+    df['DCN'] = val_losses
+
+    # 保存回 CSV 文件
+    df.to_csv('搜广推\code_bymyself\losses\wideNdeep_val_losses.csv', index=False)
 
 if __name__ == "__main__":
     main()

@@ -169,8 +169,8 @@ def main():
     # Prepare the input dictionary
     embed_dim = 4
     out_dim = 16
-    batch_size = 32
-    epochs = 20
+    batch_size = 16
+    epochs = 60
     dnn_feature_columns = {
         'sparse': [{'name': feat, 'vocabulary_size': data[feat].nunique(), 'embedding_dim': embed_dim} for feat in sparse_features],
     }
@@ -178,14 +178,14 @@ def main():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     pnn = PNN(dnn_feature_columns,in_features=len(sparse_features),embed_dim=embed_dim,out_features=out_dim).to(device)
     loss = nn.BCELoss()
-    op = torch.optim.Adam(params=pnn.parameters(),lr = 1e-3)
+    op = torch.optim.Adam(params=pnn.parameters(),lr = 5e-5,weight_decay=1e-3)
 
     labels_tensor = torch.tensor(labels,dtype=torch.float32)
     sparse_input_tensor = torch.tensor(train_data[sparse_features].values,dtype=torch.long)
     dataset = TensorDataset(sparse_input_tensor,labels_tensor)
     
     # 划分训练集和验证集
-    train_size = int(0.8 * len(dataset))
+    train_size = int(0.6 * len(dataset))
     val_size = len(dataset) - train_size
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -210,7 +210,11 @@ def main():
     # 可视化损失
     plot_losses(train_losses, val_losses, epochs)
 
-    
+    df = pd.read_csv('搜广推\code_bymyself\losses\wideNdeep_val_losses.csv')
+    df['PNN'] = val_losses
+
+    # 保存回 CSV 文件
+    df.to_csv('搜广推\code_bymyself\losses\wideNdeep_val_losses.csv', index=False)
 
 if __name__ =='__main__':
     main()

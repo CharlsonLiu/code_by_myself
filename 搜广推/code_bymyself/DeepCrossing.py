@@ -58,11 +58,9 @@ class DeepCrossing(nn.Module):
 
         # 拼接稀疏特征
         sparse_output = torch.cat(sparse_embeddings, dim=1)
-        print("Sparse output shape:", sparse_output.shape)
 
         # 拼接稠密和稀疏特征
         dnn_inputs = torch.cat([dense_inputs, sparse_output], dim=1)
-        print("DNN inputs shape:", dnn_inputs.shape)
 
         for block in self.residual_blocks:
             dnn_inputs = block(dnn_inputs)
@@ -99,9 +97,6 @@ def train_epoch(model, train_loader, criterion, optimizer, device):
         dense_batch = dense_batch.to(device)
         sparse_batch = sparse_batch.to(device)
         labels_batch = labels_batch.to(device)
-        print("Dense batch shape:", dense_batch.shape)
-        print("Sparse batch shape:", sparse_batch.shape)
-        print("Labels batch shape:", labels_batch.shape)
 
         optimizer.zero_grad()
         outputs = model(dense_batch, sparse_batch)
@@ -151,7 +146,6 @@ def main():
 
     # 拆分训练数据与标签
     train_data = data_process(data, dense_feat=dense_features, sparse_feat=sparse_features)
-    print('dataframe:',train_data.shape)
     labels = data['label'].values
 
     # 构建特征标记
@@ -163,13 +157,13 @@ def main():
     }
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    epochs = 10
-    batch_size = 32
+    epochs = 60
+    batch_size = 16
 
     # 模型初始化
     model = DeepCrossing(dnn_feature_columns).to(device)
     criterion = nn.BCELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    optimizer = torch.optim.Adam(model.parameters(), lr=5e-5,weight_decay=1e-3)
 
     # 准备数据
     dense_input_tensor = torch.tensor(train_data[dense_features].values, dtype=torch.float32)
@@ -180,7 +174,7 @@ def main():
     dataset = TensorDataset(dense_input_tensor, sparse_input_tensor, labels_tensor)
 
     # 划分训练集和验证集
-    train_size = int(0.8 * len(dataset))
+    train_size = int(0.6 * len(dataset))
     val_size = len(dataset) - train_size
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -204,6 +198,12 @@ def main():
 
     # 可视化损失
     plot_losses(train_losses, val_losses, epochs)
+
+    df = pd.read_csv('搜广推\code_bymyself\losses\wideNdeep_val_losses.csv')
+    df['DeepCrossing'] = val_losses
+
+    # 保存回 CSV 文件
+    df.to_csv('搜广推\code_bymyself\losses\wideNdeep_val_losses.csv', index=False)
 
 if __name__ == "__main__":
     main()

@@ -1,18 +1,16 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-#!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 '''
-@文件        :DeepFM.py
+@文件        :xDeepFm.py
 @说明        :
-@时间        :2024/11/07 19:37:49
+@时间        :2024/11/18 16:16:21
 @作者        :Liu Ziyue
 '''
 
-from typing import List
+import re
 import warnings
-
 warnings.filterwarnings("ignore")
+
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -20,7 +18,7 @@ from tqdm import tqdm
 import torch
 import torch.nn as nn
 from torch.nn import Embedding
-import torch.functional as F
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset, random_split,TensorDataset
 import torch.nn.init as init
 import torch.optim as optim
@@ -41,24 +39,125 @@ def process_data(data_df,dense_feature,sparse_feature):
     return data_df[dense_feature + sparse_feature]
 
 
-class FMlayer(nn.Module):
-    def __init__(self):
-        super(FMlayer, self).__init__()
+class CIN(nn.Module):
+    def __init__(self,sparse_num, embed_dim, hidden_dim=[128,128]):
+        super(CIN, self).__init__()
+        '''
+        :params
+        - sparse_num -> int:the num of sparse features
+        - embed_dim -> int: The dimension of the original embedding for each sparse feature.
+        - hidden_dim -> List： A list of the hidden units num of each hidden layer
+        '''
+        self.embed_dim = embed_dim
+        self.hidden_dim = hidden_dim
+        self.sparse_num = sparse_num
+        # CIN 每一层的大小，以list的形式展现，更利于计算
+        self.field_nums = [self.sparse_num] + hidden_dim
+
+        # 过滤器
+        # pytorch中的卷积权重是[out_channels, in_channels, kernel_size]
+        # 当kernel_size=1时，相当于点卷积，也就是每个通道的值经过一个标量权重
+        # 与偏置项计算后直接输出，没有空间上的感受野
+        # 在这里的通道指的是输入特征的数量
+        self.cin_W = nn.ParameterDict(
+            {
+                f'CIN_W_{i}':nn.Parameter(
+                    torch.randn(self.field_nums[i + 1], self.field_nums[0] * self.field_nums[i], 1 )
+                    )
+                    for i in range(len(self.field_nums) - 1)
+            }
+        )
+        # 用 Xavier 初始化
+        for param in self.cin_W.values():
+            nn.init.xavier_uniform_(param)
+
 
     def forward(self,input):
-        # 优化后的公式为： 0.5 * 求和（和的平方-平方的和）  =>> B x 1
-        # input shape[batch,feature num,embed dimension]
-        square_of_sum = torch.square(torch.sum(input,dim=1,keepdim=True))
-        sum_of_square = torch.sum(input * input, dim=1, keepdim=True)
-        cross_term = square_of_sum - sum_of_square
-        cross_term = 0.5 * torch.sum(cross_term,dim=2,keepdim=False)
+        # input :[batch, sparse_feature_num, embed_dim]
+        hidden_layers_results = [input] # 这个存储当前层的结果
 
-        return cross_term
+        # 从embedding的维度把张量一个个的切开,这个为了后面逐通道进行卷积
+        # 这个结果是个list，list长度是embed_dim,
+        # 每个元素维度是[None, field_nums[0], 1]  field_nums[0]即输入的特征个数
+        # 即把输入的[None, field_num, embed_dim]，切成了embed_dim个[None, field_nums[0], 1]的张量
+        # 最后的张量应该是[embed_dim, batch, feature_num, 1 for broadcast]
+        split_x_0 = self.process_split_tensor(hidden_layers_results[0], self.embed_dim)
 
-class DeepFM(nn.Module):
+        for idx, size in enumerate(self.hidden_dim):
+            # 这个操作和上面同理，也是为了逐通道卷积的时候更加方便，分割的是当前层的输入Xk-1
+            # embed_dim个[None, field_nums[i], 1] 
+            # feild_nums[i] 当前隐藏层单元数量
+            split_x_k = self.process_split_tensor(hidden_layers_results[-1],self.embed_dim)
+
+            # 外积运算
+            # pytorch中，向量的外积就是[1,a] [b,1]之间的矩阵乘法
+            # 因为pytorch会自动广播
+            # 当然也可以用torch.outer
+            # [embed_dim, None, field_nums[0], field_nums[i]]
+            out_product_res_m = torch.matmul(split_x_0,split_x_k.transpose(-2, -1))
+            # 后两维合并，方便运算，因为卷积核的权重矩阵是合并定义的
+            out_product_res_o = out_product_res_m.view(self.embed_dim,-1,self.field_nums[0] * self.field_nums[idx])
+            # [None, field_nums[0]*field_nums[i], dim]
+            out_product_res = out_product_res_o.permute(1,2,0)
+
+            # 卷积运算
+            # 这个理解的时候每个样本相当于1张通道为1的照片 dim为宽度，
+            # field_nums[0]*field_nums[i]为长度
+            # 这时候的卷积核大小是field_nums[0]*field_nums[i]的, 
+            # 这样一个卷积核的卷积操作相当于在dim上进行滑动，每一次滑动会得到一个数
+            # 这样一个卷积核之后，会得到dim个数，即得到了[None, dim, 1]的张量， 
+            # 这个即当前层某个神经元的输出
+            # 当前层一共有field_nums[i+1]个神经元， 也就是field_nums[i+1]个卷积核，
+            # 最终的这个输出维度[None, dim, field_nums[i+1]]
+            # 选择某个卷积核进行卷积（例如，'CIN_W_0'）
+            filter_weight = self.cin_W[f'CIN_W_{idx}']
+
+            # 使用 F.conv1d 执行卷积，stride=1, padding=0 (等同于 VALID padding)
+            cnn_layer_out = F.conv1d(out_product_res, filter_weight, stride=1, padding=0)
+            hidden_layers_results.append(cnn_layer_out)
+
+        # 最后CIN的结果取中间层的输出，不需要第0层
+        final_result = hidden_layers_results[1:]
+        # [None, H1+H2+...HT, dim]
+        result = torch.concat(final_result,dim=1)
+        # [None, H1+H2+..HT]
+        result = torch.sum(result,dim=2,keepdim=False)
+
+        return result
+
+    def process_split_tensor(self,input_tensor, embed_dim):
+        """
+        对输入张量进行拆分并调整维度，最终返回形状为 [embed_dim, batch_size, field_nums[0], 1] 的张量。
+        
+        :param input_tensor: 输入张量，形状为 [batch_size, field_nums[0], total_embed_dim]
+        :param embed_dim: 每个子张量的嵌入维度，即拆分的维度大小
+        :return: 调整后的张量，形状为 [embed_dim, batch_size, field_nums[0], 1]
+        """
+        # 按 embed_dim 拆分张量
+        split_tensor = torch.split(input_tensor, embed_dim, dim=2)
+
+        # 处理拆分后的张量
+        processed_splits = []
+
+        for split in split_tensor:
+            # 调整维度顺序为 [embed_dim, batch_size, field_nums[0]]
+            split = split.permute(2, 0, 1)
+            
+            # 增加新的维度，变为 [embed_dim, batch_size, field_nums[0], 1]
+            split = split.unsqueeze(-1)
+            
+            # 添加到列表
+            processed_splits.append(split)
+
+        # 将所有子张量堆叠在一起，最终形状为 [embed_dim, batch_size, field_nums[0], 1]
+        final_tensor = torch.cat(processed_splits, dim=0)
+
+        return final_tensor
+
+class xDeepFM(nn.Module):
     def __init__(self, Linearfeature, DNNFeature, dense_dim,
                     sparse_dim, embed_dim):
-        super(DeepFM, self).__init__()
+        super(xDeepFM, self).__init__()
 
         # 线性层部分，这里和wide and deep是一样的
         # 稠密和稀疏特征分开处理，得到各自的logit，
@@ -72,8 +171,9 @@ class DeepFM(nn.Module):
         # 构建线性部分的稠密logit计算模块
         self.linear_Dlogit = nn.Linear(dense_dim, 1)
 
-        # FM部分,唯一不同的部分
-        self.fm = FMlayer()
+        # CIN部分，也是这篇论文的核心部分
+        self.cin = CIN(sparse_num=sparse_dim,embed_dim=embed_dim)
+        self.cin_logits = nn.Linear(256,1)
 
         # DNN部分
         self.dnn_sparse_feature = DNNFeature['sparse']
@@ -103,17 +203,18 @@ class DeepFM(nn.Module):
         linear_dense_logits = self.linear_Dlogit(linear_dense_data)
         linear_logit = linear_dense_logits + linear_sparse_logits
         
-        # FM部分，单独处理sparse部分，
+        # CIN部分，单独处理sparse部分，
         # 因此可以借用DNN部分的embedding
-        fm_input = torch.stack([emb(dnn_sparse_data[:, i]) for i, emb in enumerate(self.dnn_embeddings)], dim=1)
-        fm_cross_out = self.fm(fm_input)
+        cin_input = torch.stack([emb(dnn_sparse_data[:, i]) for i, emb in enumerate(self.dnn_embeddings)], dim=1)
+        exFM_out = self.cin(cin_input)
+        exFM_logits = self.cin_logits(exFM_out)
 
         # DNN层
         dnn_sparse = torch.cat([emb(dnn_sparse_data[:, i]) for i, emb in enumerate(self.dnn_embeddings)], dim=1)
         dnn_input = torch.cat([dnn_dense_data, dnn_sparse], dim=1)
         dnn_logit = self.dnn_layers(dnn_input)
 
-        output_logit = linear_logit + dnn_logit + fm_cross_out
+        output_logit = linear_logit + dnn_logit + exFM_logits
 
         return output_logit
 
@@ -215,7 +316,7 @@ def main():
         'sparse':[{'name':feat,'vocab_size':data[feat].nunique(),'embed_dim':embed_dim} for feat in sparse_features],
         'dense': [{'name': feat, 'dimension': 1} for feat in dense_features]
     }
-    model = DeepFM(linear_feature,dnn_feature,dense_dim,sparse_dim,embed_dim).to(device)
+    model = xDeepFM(linear_feature,dnn_feature,dense_dim,sparse_dim,embed_dim).to(device)
     criterion = nn.BCEWithLogitsLoss()
     # 使用 AdamW 优化器，并添加学习率调度器
     optimizer = optim.AdamW(model.parameters(), lr=5e-5, weight_decay=1e-3)  # weight_decay是L2正则化项
@@ -262,9 +363,8 @@ def main():
 
     # 可视化损失
     plot_losses(train_losses, val_losses, epochs)
-
     df = pd.read_csv('搜广推\code_bymyself\losses\wideNdeep_val_losses.csv')
-    df['DeepFM'] = val_losses
+    df['xDeepFM'] = val_losses
 
     # 保存回 CSV 文件
     df.to_csv('搜广推\code_bymyself\losses\wideNdeep_val_losses.csv', index=False)
