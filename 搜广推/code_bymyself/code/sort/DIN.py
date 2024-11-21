@@ -180,16 +180,16 @@ class DIN(nn.Module):
 
         # 定义 DNN 层，逐层堆叠
         self.dnn_layers = nn.ModuleList([
-            nn.Linear(49, 100),
+            nn.Linear(57, 200),
             nn.PReLU(),
-            nn.Dropout(0.5),  # Dropout 层，防止过拟合
-            nn.Linear(100, 50),
+            nn.Dropout(0.3),  # Dropout 层，防止过拟合
+            nn.Linear(200, 80),
             nn.PReLU(),
-            nn.Dropout(0.5)  # Dropout 层
+            nn.Dropout(0.3)  # Dropout 层
         ])
         
         # 输出层
-        self.out = nn.Linear(50, 1)
+        self.out = nn.Linear(80, 1)
 
     def forward(self, sparse_data, dense_data, behavior_embeds, behavior_seq_embeds):
         # 数据分为三部分
@@ -201,7 +201,7 @@ class DIN(nn.Module):
         dnn_seq_input = self.att_pooling(query, keys)
 
         # 拼接稠密数据、稀疏数据和注意力加权后的序列输入
-        dnn_input = torch.cat([dense_data, sparse_data, dnn_seq_input], dim=-1)
+        dnn_input = torch.cat([dense_data, sparse_data, dnn_seq_input, query], dim=-1)
 
         # 通过 DNN 层进行前向传播
         dnn_out = dnn_input
@@ -306,7 +306,7 @@ def main():
     # 准备输入字典
     embed_dim = 8
     batch_size = 64
-    epochs = 30
+    epochs = 60
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # 分别构建线性特征和dnn的特征
     feature_columns = {
@@ -326,7 +326,7 @@ def main():
     }
 
     # 划分数据集
-    train_data, val_data = train_test_split(samples_data, test_size=0.2, random_state=42)
+    train_data, val_data = train_test_split(samples_data, test_size=0.3, random_state=42)
     # 创建数据集实例
     train_dataset = MovieDataset(train_data, feature_columns, sparse_list, dense_list)
     val_dataset = MovieDataset(val_data, feature_columns, sparse_list, dense_list)
@@ -338,7 +338,7 @@ def main():
     model = DIN().to(device)
     criterion = nn.BCEWithLogitsLoss()
     # 使用 AdamW 优化器，并添加学习率调度器
-    optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay= 1e-2)  # weight_decay是L2正则化项
+    optimizer = optim.AdamW(model.parameters(), lr=1e-6, weight_decay= 1e-4)  # weight_decay是L2正则化项
 
 
     # 记录损失
