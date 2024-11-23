@@ -36,10 +36,13 @@ Listing Embeddings 是基于用户的点击 session 学习得到的，用于表�
 - 对于用户连续两次点击，若时间间隔超过了30分钟，则启动新的 session。
 
 在拿到多个用户点击的 session 后，可以基于 Word2Vec 的 Skip-Gram 模型来学习不同 listing 的 Embedding 表示。最大化目标函数 $ \mathcal{L} $ ：
+
 $$
 \mathcal{L}=\sum_{s \in \mathcal{S}} \sum_{l_{i} \in s}\left(\sum_{-m \geq j \leq m, i \neq 0} \log \mathbb{P}\left(l_{i+j} \mid l_{i}\right)\right)
 $$
+
 概率 $ \mathbb{P}\left(l_{i+j} \mid l_{i}\right) $ 是基于 soft-max 函数的表达式。表示在一个 session 中，已知中心 listing $ l_i $ 来预测上下文 listing $ l_{i+j} $ 的概率：
+
 $$
 \mathbb{P}\left(l_{i+j} \mid l_{i}\right)=\frac{\exp \left(\mathbf{v}_{l_{i}}^{\top} \mathbf{v}_{l_{i+j}}^{\prime}\right)}{\sum_{l=1}^{|\mathcal{V}|} \exp \left(\mathbf{v}_{l_{i}}^{\top} \mathbf{v}_{l}^{\prime}\right)}
 $$
@@ -76,6 +79,7 @@ $$
    - Airbnb 发现这种样本的不平衡，在学习同一片区域房源的 Embedding 时会得到次优解。
    
    - 解决办法也很简单，对于每个滑窗中的中心 lisitng，其负样本的选择新增了与其位于同一个 market 的 listing。至此，优化函数更新如下：
+     
      $$
      \underset{\theta}{\operatorname{argmax}} \sum_{(l, c) \in \mathcal{D}_{p}} \log \frac{1}{1+e^{-\mathbf{v}_{c}^{\prime^{\prime}} \mathbf{v}_{l}}}+\sum_{(l, c) \in \mathcal{D}_{n}} \log \frac{1}{1+e^{\mathbf{v}_{c}^{\prime} \mathbf{v}_{l}}} +\log \frac{1}{1+e^{-\mathbf{v}_{c}^{\prime} \mathbf{v}_{l_b}}} + 
      \sum_{(l, m_n ) \in \mathcal{D}_{m_n}} \log \frac{1}{1+e^{\mathbf{v}_{m_n}^{\prime} \mathbf{v}_{l}}}
@@ -192,6 +196,7 @@ Type Embedding 的学习同样是基于 Skip-Gram 模型，但是有两点需要
       - 形成一个（User-type, Listing-type）组成的元组序列，这样就可以让 User-type 和 Listing-type 的在 session 中的相对位置保持一致了。
       
    - User-type 的目标函数：
+      
       $$
       \underset{\theta}{\operatorname{argmax}} \sum_{\left(u_{t}, c\right) \in \mathcal{D}_{b o o k}} \log \frac{1}{1+e^{-\mathbf{v}_{c}^{\prime} \mathbf{v}_{u_{t}}}}+\sum_{\left(u_{t}, c\right) \in \mathcal{D}_{n e g}} \log \frac{1}{1+e^{\mathbf{v}_{c}^{\prime} \mathbf{v}_{u_{t}}}}
       $$
@@ -200,6 +205,7 @@ Type Embedding 的学习同样是基于 Skip-Gram 模型，但是有两点需要
       +  $ u_t $ 表示 User-type 的 Embedding， $ \mathbf{v}_{c}^{\prime} $ 表示 Listing-type 的Embedding。
 
    - Listing-type 的目标函数：
+     
      $$
      \begin{aligned}
      \underset{\theta}{\operatorname{argmax}} & \sum_{\left(l_{t}, c\right) \in \mathcal{D}_{b o o k}} \log \frac{1}{1+\exp ^{-\mathrm{v}_{c}^{\prime} \mathbf{v}_{l_{t}}}}+\sum_{\left(l_{t}, c\right) \in \mathcal{D}_{n e g}} \log \frac{1}{1+\exp ^{\mathrm{v}_{c}^{\prime} \mathbf{v}_{l_{t}}}} \\
@@ -218,6 +224,7 @@ Type Embedding 的学习同样是基于 Skip-Gram 模型，但是有两点需要
       
    - 为了提高用户预定房源以后，被主人接受的概率。同时，降低房源主人拒绝客人的概率。Airbnb 在训练 User-type 和 Listing-type 的 Embedding时，将用户预定后却被拒绝的样本加入负样本集中（如下图b）。
       - 更新后，Listing-type 的目标函数：
+        
         $$
         \begin{aligned}
         \underset{\theta}{\operatorname{argmax}} & \sum_{\left(u_{t}, c\right) \in \mathcal{D}_{b o o k}} \log \frac{1}{1+\exp ^{-\mathbf{v}_{c}^{\prime} \mathbf{v}_{u_{t}}}}+\sum_{\left(u_{t}, c\right) \in \mathcal{D}_{n e g}} \log \frac{1}{1+\exp ^{\mathbf{v}_{c}^{\prime} \mathbf{v}_{u_{t}}}} \\
@@ -226,6 +233,7 @@ Type Embedding 的学习同样是基于 Skip-Gram 模型，但是有两点需要
         $$
       
       - 更新后，User-type 的目标函数：
+        
         $$
         \begin{aligned}
         \underset{\theta}{\operatorname{argmax}} & \sum_{\left(l_{t}, c\right) \in \mathcal{D}_{b o o k}} \log \frac{1}{1+\exp ^{-\mathrm{v}_{c}^{\prime} \mathbf{v}_{l_{t}}}}+\sum_{\left(l_{t}, c\right) \in \mathcal{D}_{n e g}} \log \frac{1}{1+\exp ^{\mathrm{v}_{c}^{\prime} \mathbf{v}_{l_{t}}}} \\
