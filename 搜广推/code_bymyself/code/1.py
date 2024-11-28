@@ -1,10 +1,29 @@
-import pandas as pd
+class Solution:
+    def numOfSubarrays(self, arr):
+        # 构建前缀和数组
+        l = len(arr)
+        s = [0] * (l + 1)
+        for i, a in enumerate(arr):
+            s[i+1] = s[i] + a
+        
+        odd_count = 0
+        even_count = 1 # 包括前缀和0 
+        result = 0
+        dp = [0] * (l + 1)
+        for i in range(1, l + 1):
+            if s[i] % 2 == 1:
+                dp[i] += even_count
+                odd_count +=1
+            else:
+                dp[i] += odd_count
+                even_count +=1
+            result += dp[i]
+        
+        # 打印 dp 数组
+            print("DP array:", dp)
+        return dp[-1]
 
-
-path = '搜广推\\fun-rec\\codes\\base_models\\data\\movie_sample.txt'
-samples_data = pd.read_csv(path, sep='\t', header = None)
-samples_data.columns = ["user_id", "gender", "age", "hist_movie_id", "hist_len", "movie_id", "movie_type_id", "label"]
-
-X = samples_data[["user_id", "gender", "age", "hist_movie_id", "hist_len", "movie_id", "movie_type_id"]]
-y = samples_data["label"]
-print(samples_data.head(5))
+# 测试代码
+solution = Solution()
+arr = [1,2,3,4,5,6,7]
+solution.numOfSubarrays(arr)

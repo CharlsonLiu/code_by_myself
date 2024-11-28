@@ -13,6 +13,7 @@ import os
 from turtle import forward
 import warnings
 
+from anyio import key
 from sklearn.model_selection import train_test_split
 warnings.filterwarnings("ignore")
 import pandas as pd
@@ -158,7 +159,6 @@ class AttentionPoolingLayer(nn.Module):
 
         # 获取对应的注意力权重
         att_weight = self.local_att(query, keys)
-
         # 创建padding的张量，用来标记行为序列中无效的位置
         padding = torch.zeros_like(att_weight)  # B x len
 

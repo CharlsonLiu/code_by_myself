@@ -7,6 +7,7 @@
 @作者        :Liu Ziyue
 '''
 
+import random
 from typing import List
 import warnings
 
@@ -162,7 +163,6 @@ def plot_losses(train_losses, val_losses, epochs):
     plt.legend()
     plt.show()
 
-
 def main():
     path = '搜广推\\fun-rec\\codes\\base_models\\data\\criteo_sample.txt'
     data = pd.read_csv(path, sep=',')
@@ -195,7 +195,7 @@ def main():
     criterion = nn.BCEWithLogitsLoss()
     # 使用 AdamW 优化器，并添加学习率调度器
     optimizer = optim.AdamW(model.parameters(), lr=5e-5, weight_decay=1e-3)  # weight_decay是L2正则化项
-
+    
     # 使用学习率调度器
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5, verbose=True)
     

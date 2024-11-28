@@ -208,7 +208,7 @@ def main():
     model = DeepFM(dnn_feature,dense_dim,sparse_dim,embed_dim).to(device)
     criterion = nn.BCEWithLogitsLoss()
     # 使用 AdamW 优化器，并添加学习率调度器
-    optimizer = optim.AdamW(model.parameters(), lr=5e-5, weight_decay=1e-3)  # weight_decay是L2正则化项
+    optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-3)  # weight_decay是L2正则化项
 
     # 使用学习率调度器
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5, verbose=True)
