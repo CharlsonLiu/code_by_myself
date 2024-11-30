@@ -59,20 +59,6 @@ $\mathcal{U}$表示用户集合，$\mathcal{I}$表示item集合，模型考虑�
 
 下面要开那三个盲盒操作，即短期行为学习，长期行为学习以及门控融合机制。但在这之前，得先说一个东西，就是输入层这里， 要带物品的side infomation，比如物品的item ID, 物品的品牌ID，商铺ID， 类别ID等等， 那你说，为啥要单独说呢？ 之前的模型不也有， 但是这里在利用方式上有些不一样需要注意。
 
-### Input Embedding with side Information
-在淘宝的推荐场景中，作者发现， 顾客与物品产生交互行为的时候，不仅考虑特定的商品本身，还考虑产品， 商铺，价格等，这个显然。所以，这里对于一个商品来说，不仅要用到Item ID，还用了更多的side info信息，包括`leat category, fist level category, brand,shop`。 
-
-所以，假设用户的短期行为是$\mathcal{S}^{u}=\left[i_{1}^{u}, \ldots, i_{t}^{u}, \ldots, i_{m}^{u}\right]$， 这里面的每个商品$i_t^u$其实有5个属性表示了，每个属性本质是ID，但转成embedding之后，就得到了5个embedding， 所以这里就涉及到了融合问题。 这里用$\boldsymbol{e}_{{i}^u_t} \in \mathbb{R}^{d \times 1}$来表示每个$i_t^u$，但这里不是embedding的pooling操作，而是Concat
-$$
-\boldsymbol{e}_{i_{t}^{u}}=\operatorname{concat}\left(\left\{\boldsymbol{e}_{i}^{f} \mid f \in \mathcal{F}\right\}\right)
-$$
-其中，$\boldsymbol{e}_{i}^{f}=\boldsymbol{W}^{f} \boldsymbol{x}_{i}^{f} \in \mathbb{R}^{d_{f} \times 1}$， 这个公式看着负责，其实就是每个side info的id过embedding layer得到各自的embedding。这里embedding的维度是$d_f$， 等拼接起来之后，就是$d$维了。这个点要注意。
-
-另外就是用户的base表示向量了，这个很简单， 就是用户的基础画像，得到embedding，直接也是Concat，这个常规操作不解释：
-$$
-\boldsymbol{e}_{u}=\operatorname{concat}\left(\left\{\boldsymbol{e}_{u}^{p} \mid p \in \mathcal{P}\right\}\right)
-$$
-$e_u^p$是特征$p$的embedding。
 
 Ok，输入这里说完了之后，就直接开盲盒， 不按照论文里面的顺序来了。想看更多细节的就去看原论文吧，感觉那里面说的有些啰嗦。不如直接上图解释来的明显：
 
